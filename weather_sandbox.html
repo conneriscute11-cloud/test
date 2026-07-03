@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Fluid Weather Sandbox - Clouds & Storms</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        canvas {
+            border: 2px solid #4a4a6a;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        #controls {
+            background: #2a2a4a;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            border-top: 2px solid #4a4a6a;
+        }
+        
+        .control-group {
+            background: #3a3a5a;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .control-group h3 {
+            margin-bottom: 10px;
+            color: #7dd3fc;
+            font-size: 14px;
+        }
+        
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 8px;
+        }
+        
+        .slider-container label {
+            font-size: 12px;
+            margin-bottom: 3px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #5a5a7a;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #7dd3fc;
+            cursor: pointer;
+        }
+        
+        button {
+            background: #4a4a6a;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 3px;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #6a6a8a;
+        }
+        
+        button.active {
+            background: #7dd3fc;
+            color: #1a1a2e;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 250px;
+        }
+        
+        .stat {
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #aaa;
+        }
+        
+        .stat-value {
+            color: #7dd3fc;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="weatherCanvas"></canvas>
+        <div id="info-panel">
+            <div class="stat">
+                <span class="stat-label">Temperature: </span>
+                <span class="stat-value" id="temp-display">20°C</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Humidity: </span>
+                <span class="stat-value" id="humidity-display">50%</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Pressure: </span>
+                <span class="stat-value" id="pressure-display">1013 hPa</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Wind Speed: </span>
+                <span class="stat-value" id="wind-display">0 m/s</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Cloud Density: </span>
+                <span class="stat-value" id="cloud-display">0%</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div class="control-group">
+            <h3>Weather Tools</h3>
+            <button id="btn-heat" class="active">Heat Source</button>
+            <button id="btn-cold">Cold Source</button>
+            <button id="btn-moisture">Moisture</button>
+            <button id="btn-wind">Wind</button>
+            <button id="btn-pressure">Pressure</button>
+        </div>
+        
+        <div class="control-group">
+            <h3>Simulation Parameters</h3>
+            <div class="slider-container">
+                <label>Viscosity <span id="visc-val">0.0001</span></label>
+                <input type="range" id="viscosity" min="0" max="0.001" step="0.00001" value="0.0001">
+            </div>
+            <div class="slider-container">
+                <label>Diffusion <span id="diff-val">0.00001</span></label>
+                <input type="range" id="diffusion" min="0" max="0.0001" step="0.000001" value="0.00001">
+            </div>
+            <div class="slider-container">
+                <label>Gravity <span id="grav-val">9.8</span></label>
+                <input type="range" id="gravity" min="0" max="20" step="0.1" value="9.8">
+            </div>
+            <div class="slider-container">
+                <label>Time Step <span id="dt-val">0.016</span></label>
+                <input type="range" id="timestep" min="0.001" max="0.05" step="0.001" value="0.016">
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Environment</h3>
+            <div class="slider-container">
+                <label>Ambient Temp <span id="ambient-temp-val">20</span>°C</label>
+                <input type="range" id="ambient-temp" min="-20" max="40" step="1" value="20">
+            </div>
+            <div class="slider-container">
+                <label>Ambient Humidity <span id="ambient-humidity-val">50</span>%</label>
+                <input type="range" id="ambient-humidity" min="0" max="100" step="1" value="50">
+            </div>
+            <div class="slider-container">
+                <label>Base Pressure <span id="base-pressure-val">1013</span> hPa</label>
+                <input type="range" id="base-pressure" min="950" max="1050" step="1" value="1013">
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Actions</h3>
+            <button id="btn-reset">Reset Simulation</button>
+            <button id="btn-pause">Pause</button>
+            <button id="btn-storm">Create Storm</button>
+            <button id="btn-clear">Clear Clouds</button>
+        </div>
+    </div>
+
+    <script>
+        // Canvas and context setup
+        const canvas = document.getElementById('weatherCanvas');
+        const ctx = canvas.getContext('webgl') || canvas.getContext('2d');
+        
+        // Set canvas size
+        const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 800);
+        canvas.width = size;
+        canvas.height = size;
+        
+        // Grid resolution for simulation
+        const N = 256;
+        const dt = 0.016;
+        const diff = 0.00001;
+        const visc = 0.0001;
+        
+        // Simulation arrays
+        let u = new Float32Array(N * N);
+        let v = new Float32Array(N * N);
+        let u_prev = new Float32Array(N * N);
+        let v_prev = new Float32Array(N * N);
+        let temp = new Float32Array(N * N);
+        let temp_prev = new Float32Array(N * N);
+        let humidity = new Float32Array(N * N);
+        let humidity_prev = new Float32Array(N * N);
+        let pressure = new Float32Array(N * N);
+        let cloud = new Float32Array(N * N);
+        
+        // Current tool selection
+        let currentTool = 'heat';
+        let isPaused = false;
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+        
+        // Environmental parameters
+        let ambientTemp = 20;
+        let ambientHumidity = 50;
+        let basePressure = 1013;
+        let gravity = 9.8;
+        
+        // Initialize WebGL if available
+        let gl = null;
+        let program = null;
+        let useWebGL = false;
+        
+        function initWebGL() {
+            try {
+                gl = canvas.getContext('webgl');
+                if (!gl) {
+                    console.log('WebGL not available, falling back to 2D canvas');
+                    return false;
+                }
+                
+                // Vertex shader
+                const vsSource = `
+                    attribute vec4 a_position;
+                    void main() {
+                        gl_Position = a_position;
+                    }
+                `;
+                
+                // Fragment shader for fluid visualization
+                const fsSource = `
+                    precision mediump float;
+                    uniform sampler2D u_velocity;
+                    uniform sampler2D u_temperature;
+                    uniform sampler2D u_humidity;
+                    uniform sampler2D u_cloud;
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    
+                    void main() {
+                        vec2 uv = gl_FragCoord.xy / u_resolution;
+                        
+                        // Sample data
+                        float velocity = texture2D(u_velocity, uv).r;
+                        float temperature = texture2D(u_temperature, uv).r;
+                        float humid = texture2D(u_humidity, uv).r;
+                        float clouds = texture2D(u_cloud, uv).r;
+                        
+                        // Create sky gradient based on temperature
+                        vec3 skyColor = mix(vec3(0.1, 0.1, 0.3), vec3(0.3, 0.5, 0.8), temperature);
+                        
+                        // Add cloud rendering
+                        vec3 cloudColor = vec3(0.8, 0.8, 0.9);
+                        if (clouds > 0.3) {
+                            cloudColor = mix(cloudColor, vec3(0.3, 0.3, 0.4), (clouds - 0.3) * 2.0);
+                        }
+                        
+                        vec3 finalColor = mix(skyColor, cloudColor, clouds);
+                        
+                        gl_FragColor = vec4(finalColor, 1.0);
+                    }
+                `;
+                
+                // Compile shaders and create program
+                const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+                const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+                
+                if (!vertexShader || !fragmentShader) return false;
+                
+                program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+                
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    console.error('Program failed to link');
+                    return false;
+                }
+                
+                useWebGL = true;
+                return true;
+            } catch (e) {
+                console.error('WebGL initialization failed:', e);
+                return false;
+            }
+        }
+        
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+        
+        // Initialize simulation
+        function initialize() {
+            for (let i = 0; i < N * N; i++) {
+                u[i] = v[i] = u_prev[i] = v_prev[i] = 0;
+                temp[i] = ambientTemp;
+                temp_prev[i] = ambientTemp;
+                humidity[i] = ambientHumidity / 100;
+                humidity_prev[i] = ambientHumidity / 100;
+                pressure[i] = basePressure;
+                cloud[i] = 0;
+            }
+        }
+        
+        // Convert 2D coordinates to array index
+        function IX(x, y) {
+            x = Math.max(0, Math.min(N - 1, Math.floor(x)));
+            y = Math.max(0, Math.min(N - 1, Math.floor(y)));
+            return x + y * N;
+        }
+        
+        // Add density/velocity to simulation
+        function addDensity(x, y, amount) {
+            const index = IX(x, y);
+            humidity[index] += amount;
+        }
+        
+        function addVelocity(x, y, amountX, amountY) {
+            const index = IX(x, y);
+            u[index] += amountX;
+            v[index] += amountY;
+        }
+        
+        function addTemperature(x, y, amount) {
+            const index = IX(x, y);
+            temp[index] += amount;
+        }
+        
+        // Linear solve for diffusion
+        function lin_solve(b, x, x0, a, c) {
+            const cRecip = 1.0 / c;
+            for (let k = 0; k < 20; k++) {
+                for (let j = 1; j < N - 1; j++) {
+                    for (let i = 1; i < N - 1; i++) {
+                        x[IX(i, j)] =
+                            (x0[IX(i, j)] +
+                                a *
+                                    (x[IX(i + 1, j)] +
+                                        x[IX(i - 1, j)] +
+                                        x[IX(i, j + 1)] +
+                                        x[IX(i, j - 1)])) *
+                            cRecip;
+                    }
+                }
+                set_bnd(b, x);
+            }
+        }
+        
+        // Project for incompressibility
+        function project(u, v, p, div) {
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    div[IX(i, j)] =
+                        (-0.5 *
+                            (u[IX(i + 1, j)] -
+                                u[IX(i - 1, j)] +
+                                v[IX(i, j + 1)] -
+                                v[IX(i, j - 1)])) /
+                        N;
+                    p[IX(i, j)] = 0;
+                }
+            }
+            set_bnd(0, div);
+            set_bnd(0, p);
+            lin_solve(0, p, div, 1, 4);
+            
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    u[IX(i, j)] -= 0.5 * N * (p[IX(i + 1, j)] - p[IX(i - 1, j)]);
+                    v[IX(i, j)] -= 0.5 * N * (p[IX(i, j + 1)] - p[IX(i, j - 1)]);
+                }
+            }
+            set_bnd(1, u);
+            set_bnd(2, v);
+        }
+        
+        // Advect using semi-Lagrangian method
+        function advect(b, d, d0, u, v, dt) {
+            let i0, i1, j0, j1;
+            let x, y, s0, t0, s1, t1, dt0;
+            
+            dt0 = dt * N;
+            
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    x = i - dt0 * u[IX(i, j)];
+                    y = j - dt0 * v[IX(i, j)];
+                    
+                    if (x < 0.5) x = 0.5;
+                    if (x > N - 1.5) x = N - 1.5;
+                    i0 = Math.floor(x);
+                    i1 = i0 + 1;
+                    
+                    if (y < 0.5) y = 0.5;
+                    if (y > N - 1.5) y = N - 1.5;
+                    j0 = Math.floor(y);
+                    j1 = j0 + 1;
+                    
+                    s1 = x - i0;
+                    s0 = 1 - s1;
+                    t1 = y - j0;
+                    t0 = 1 - t1;
+                    
+                    d[IX(i, j)] =
+                        s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+                        s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
+                }
+            }
+            set_bnd(b, d);
+        }
+        
+        // Boundary conditions
+        function set_bnd(b, x) {
+            for (let i = 1; i < N - 1; i++) {
+                x[IX(i, 0)] = b == 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
+                x[IX(i, N - 1)] = b == 2 ? -x[IX(i, N - 2)] : x[IX(i, N - 2)];
+            }
+            for (let j = 1; j < N - 1; j++) {
+                x[IX(0, j)] = b == 1 ? -x[IX(1, j)] : x[IX(1, j)];
+                x[IX(N - 1, j)] = b == 1 ? -x[IX(N - 2, j)] : x[IX(N - 2, j)];
+            }
+            
+            x[IX(0, 0)] = 0.5 * (x[IX(1, 0)] + x[IX(0, 1)]);
+            x[IX(0, N - 1)] = 0.5 * (x[IX(1, N - 1)] + x[IX(0, N - 2)]);
+            x[IX(N - 1, 0)] = 0.5 * (x[IX(N - 2, 0)] + x[IX(N - 1, 1)]);
+            x[IX(N - 1, N - 1)] = 0.5 * (x[IX(N - 2, N - 1)] + x[IX(N - 1, N - 2)]);
+        }
+        
+        // Main simulation step
+        function step() {
+            // Velocity step
+            diffuse(1, u_prev, u, visc, dt);
+            diffuse(2, v_prev, v, visc, dt);
+            
+            project(u_prev, v_prev, u, v);
+            
+            advect(1, u, u_prev, u_prev, v_prev, dt);
+            advect(2, v, v_prev, u_prev, v_prev, dt);
+            
+            project(u, v, u_prev, v_prev);
+            
+            // Temperature step
+            diffuse(0, temp_prev, temp, diff * 10, dt);
+            advect(0, temp, temp_prev, u, v, dt);
+            
+            // Humidity step
+            diffuse(0, humidity_prev, humidity, diff, dt);
+            advect(0, humidity, humidity_prev, u, v, dt);
+            
+            // Calculate cloud formation based on temperature and humidity
+            calculateClouds();
+            
+            // Apply buoyancy forces (hot air rises, cold air sinks)
+            applyBuoyancy();
+            
+            // Update pressure field
+            updatePressure();
+        }
+        
+        // Diffusion step
+        function diffuse(b, x, x0, diff, dt) {
+            const a = dt * diff * (N - 2) * (N - 2);
+            lin_solve(b, x, x0, a, 1 + 4 * a);
+        }
+        
+        // Calculate cloud formation
+        function calculateClouds() {
+            for (let j = 0; j < N; j++) {
+                for (let i = 0; i < N; i++) {
+                    const index = IX(i, j);
+                    
+                    // Cloud formation physics:
+                    // - Warm air can hold more moisture (Clausius-Clapeyron relation)
+                    // - When air cools below dew point, clouds form
+                    // - Dew point approximation
+                    
+                    const T = temp[index]; // Temperature in Celsius
+                    const RH = humidity[index]; // Relative humidity (0-1)
+                    
+                    // Magnus formula for saturation vapor pressure
+                    const Es = 6.112 * Math.exp((17.67 * T) / (T + 243.5));
+                    
+                    // Actual vapor pressure
+                    const E = RH * Es;
+                    
+                    // Dew point temperature
+                    const Td = (243.5 * Math.log(E / 6.112)) / (17.67 - Math.log(E / 6.112));
+                    
+                    // Cloud density increases when temperature approaches dew point
+                    if (T <= Td + 2) {
+                        cloud[index] = Math.min(1.0, cloud[index] + 0.01 * (Td + 2 - T));
+                    } else {
+                        cloud[index] = Math.max(0.0, cloud[index] - 0.005);
+                    }
+                    
+                    // Precipitation when cloud density is very high
+                    if (cloud[index] > 0.8 && humidity[index] > 0.9) {
+                        humidity[index] -= 0.01;
+                        cloud[index] -= 0.02;
+                    }
+                }
+            }
+        }
+        
+        // Apply buoyancy forces
+        function applyBuoyancy() {
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    const index = IX(i, j);
+                    
+                    // Boussinesq approximation for buoyancy
+                    // Hot air rises (negative y direction in our coordinate system)
+                    // Cold air sinks
+                    const tempDiff = temp[index] - ambientTemp;
+                    const buoyancyForce = -gravity * tempDiff * 0.0001;
+                    
+                    v[index] += buoyancyForce;
+                    
+                    // Moist air is less dense than dry air
+                    const moistBuoyancy = humidity[index] * 0.00005;
+                    v[index] -= moistBuoyancy;
+                }
+            }
+        }
+        
+        // Update pressure field
+        function updatePressure() {
+            for (let j = 0; j < N; j++) {
+                for (let i = 0; i < N; i++) {
+                    const index = IX(i, j);
+                    
+                    // Ideal gas law: P = ρRT
+                    // Pressure variations due to temperature and density
+                    const T = temp[index] + 273.15; // Convert to Kelvin
+                    const rho = 1.0 + humidity[index] * 0.5; // Density variation
+                    
+                    pressure[index] = basePressure * (rho * T) / (293.15); // Reference at 20°C
+                }
+            }
+        }
+        
+        // Render the simulation
+        function render() {
+            if (useWebGL && gl && program) {
+                renderWebGL();
+            } else {
+                render2D();
+            }
+        }
+        
+        function render2D() {
+            const imageData = ctx.createImageData(N, N);
+            const data = imageData.data;
+            
+            for (let j = 0; j < N; j++) {
+                for (let i = 0; i < N; i++) {
+                    const index = IX(i, j);
+                    const pixelIndex = (i + j * N) * 4;
+                    
+                    const T = temp[index];
+                    const H = humidity[index];
+                    const C = cloud[index];
+                    
+                    // Sky color based on temperature
+                    const skyR = 0.1 + T * 0.005;
+                    const skyG = 0.1 + T * 0.008;
+                    const skyB = 0.3 + T * 0.01;
+                    
+                    // Cloud color
+                    const cloudR = 0.8 - C * 0.5;
+                    const cloudG = 0.8 - C * 0.5;
+                    const cloudB = 0.9 - C * 0.5;
+                    
+                    // Mix sky and clouds
+                    const r = (skyR * (1 - C) + cloudR * C) * 255;
+                    const g = (skyG * (1 - C) + cloudG * C) * 255;
+                    const b = (skyB * (1 - C) + cloudB * C) * 255;
+                    
+                    data[pixelIndex] = Math.min(255, Math.max(0, r));
+                    data[pixelIndex + 1] = Math.min(255, Math.max(0, g));
+                    data[pixelIndex + 2] = Math.min(255, Math.max(0, b));
+                    data[pixelIndex + 3] = 255;
+                }
+            }
+            
+            // Scale up to canvas size
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = N;
+            tempCanvas.height = N;
+            tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+        }
+        
+        function renderWebGL() {
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            
+            gl.useProgram(program);
+            
+            // Set up geometry
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+                gl.STATIC_DRAW
+            );
+            
+            const positionLocation = gl.getAttribLocation(program, 'a_position');
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+            
+            // Set uniforms
+            const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            
+            const timeLocation = gl.getUniformLocation(program, 'u_time');
+            gl.uniform1f(timeLocation, Date.now() * 0.001);
+            
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+        
+        // Update info panel
+        function updateInfoPanel() {
+            const centerX = Math.floor(N / 2);
+            const centerY = Math.floor(N / 2);
+            const centerIndex = IX(centerX, centerY);
+            
+            document.getElementById('temp-display').textContent = 
+                temp[centerIndex].toFixed(1) + '°C';
+            document.getElementById('humidity-display').textContent = 
+                (humidity[centerIndex] * 100).toFixed(0) + '%';
+            document.getElementById('pressure-display').textContent = 
+                pressure[centerIndex].toFixed(0) + ' hPa';
+            
+            const windSpeed = Math.sqrt(u[centerIndex] ** 2 + v[centerIndex] ** 2) * 10;
+            document.getElementById('wind-display').textContent = 
+                windSpeed.toFixed(1) + ' m/s';
+            document.getElementById('cloud-display').textContent = 
+                (cloud[centerIndex] * 100).toFixed(0) + '%';
+        }
+        
+        // Mouse interaction
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            updateMousePosition(e);
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            updateMousePosition(e);
+            if (isMouseDown) {
+                applyTool();
+            }
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+        });
+        
+        function updateMousePosition(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = ((e.clientX - rect.left) / canvas.width) * N;
+            mouseY = ((e.clientY - rect.top) / canvas.height) * N;
+        }
+        
+        function applyTool() {
+            const brushSize = 5;
+            const strength = 1.0;
+            
+            for (let dy = -brushSize; dy <= brushSize; dy++) {
+                for (let dx = -brushSize; dx <= brushSize; dx++) {
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= brushSize) {
+                        const falloff = 1 - dist / brushSize;
+                        const x = mouseX + dx;
+                        const y = mouseY + dy;
+                        
+                        if (x >= 0 && x < N && y >= 0 && y < N) {
+                            switch (currentTool) {
+                                case 'heat':
+                                    addTemperature(x, y, strength * falloff * 5);
+                                    break;
+                                case 'cold':
+                                    addTemperature(x, y, -strength * falloff * 5);
+                                    break;
+                                case 'moisture':
+                                    addDensity(x, y, strength * falloff * 0.1);
+                                    break;
+                                case 'wind':
+                                    addVelocity(x, y, strength * falloff * 2, 0);
+                                    break;
+                                case 'pressure':
+                                    const index = IX(x, y);
+                                    pressure[index] += strength * falloff * 10;
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Tool buttons
+        document.querySelectorAll('#controls button').forEach(btn => {
+            if (btn.id.startsWith('btn-') && !['btn-reset', 'btn-pause', 'btn-storm', 'btn-clear'].includes(btn.id)) {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('#controls button').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentTool = btn.id.replace('btn-', '');
+                });
+            }
+        });
+        
+        // Action buttons
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            initialize();
+        });
+        
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            isPaused = !isPaused;
+            document.getElementById('btn-pause').textContent = isPaused ? 'Resume' : 'Pause';
+        });
+        
+        document.getElementById('btn-storm').addEventListener('click', () => {
+            // Create a storm system
+            const stormCenter = { x: N / 2, y: N / 2 };
+            const stormRadius = 30;
+            
+            for (let dy = -stormRadius; dy <= stormRadius; dy++) {
+                for (let dx = -stormRadius; dx <= stormRadius; dx++) {
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= stormRadius) {
+                        const x = stormCenter.x + dx;
+                        const y = stormCenter.y + dy;
+                        
+                        if (x >= 0 && x < N && y >= 0 && y < N) {
+                            const index = IX(x, y);
+                            
+                            // Low pressure center
+                            pressure[index] = basePressure - 50 * (1 - dist / stormRadius);
+                            
+                            // High humidity
+                            humidity[index] = Math.min(1.0, humidity[index] + 0.3 * (1 - dist / stormRadius));
+                            
+                            // Cool temperature
+                            temp[index] = ambientTemp - 10 * (1 - dist / stormRadius);
+                            
+                            // Rotational wind field
+                            const angle = Math.atan2(dy, dx);
+                            const tangentAngle = angle + Math.PI / 2;
+                            const windStrength = 5 * (1 - dist / stormRadius);
+                            
+                            u[index] += Math.cos(tangentAngle) * windStrength;
+                            v[index] += Math.sin(tangentAngle) * windStrength;
+                        }
+                    }
+                }
+            }
+        });
+        
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            for (let i = 0; i < N * N; i++) {
+                cloud[i] = 0;
+            }
+        });
+        
+        // Slider controls
+        document.getElementById('viscosity').addEventListener('input', (e) => {
+            window.visc = parseFloat(e.target.value);
+            document.getElementById('visc-val').textContent = window.visc.toFixed(5);
+        });
+        
+        document.getElementById('diffusion').addEventListener('input', (e) => {
+            window.diff = parseFloat(e.target.value);
+            document.getElementById('diff-val').textContent = window.diff.toFixed(6);
+        });
+        
+        document.getElementById('gravity').addEventListener('input', (e) => {
+            gravity = parseFloat(e.target.value);
+            document.getElementById('grav-val').textContent = gravity.toFixed(1);
+        });
+        
+        document.getElementById('timestep').addEventListener('input', (e) => {
+            window.dt = parseFloat(e.target.value);
+            document.getElementById('dt-val').textContent = window.dt.toFixed(3);
+        });
+        
+        document.getElementById('ambient-temp').addEventListener('input', (e) => {
+            ambientTemp = parseFloat(e.target.value);
+            document.getElementById('ambient-temp-val').textContent = ambientTemp;
+        });
+        
+        document.getElementById('ambient-humidity').addEventListener('input', (e) => {
+            ambientHumidity = parseFloat(e.target.value);
+            document.getElementById('ambient-humidity-val').textContent = ambientHumidity;
+        });
+        
+        document.getElementById('base-pressure').addEventListener('input', (e) => {
+            basePressure = parseFloat(e.target.value);
+            document.getElementById('base-pressure-val').textContent = basePressure;
+        });
+        
+        // Animation loop
+        function animate() {
+            if (!isPaused) {
+                step();
+            }
+            render();
+            updateInfoPanel();
+            requestAnimationFrame(animate);
+        }
+        
+        // Initialize and start
+        function init() {
+            useWebGL = initWebGL();
+            initialize();
+            animate();
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const newSize = Math.min(window.innerWidth - 40, window.innerHeight - 200, 800);
+            canvas.width = newSize;
+            canvas.height = newSize;
+            
+            if (gl) {
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            }
+        });
+        
+        init();
+    </script>
+</body>
+</html>
